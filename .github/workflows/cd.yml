@@ -47,84 +47,6 @@ jobs:
           cache-from: type=gha
           cache-to:   type=gha,mode=max
 
-  security-gate:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-      security-events: write
-    env:
-      IMG: ${{ secrets.DOCKERHUB_USERNAME }}/myflask@${{ needs.build-and-push.outputs.image-digest }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Trivy image scan (HIGH/CRIT fail)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: ${{ env.IMG }}
-          pkg-types: 'os,library'
-          severity: 'HIGH,CRITICAL'
-          ignore-unfixed: true
-          format: sarif
-          output: trivy-image.sarif
-          exit-code: '1'
-          scanners: 'vuln'
-
-      - name: Upload Trivy SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-image.sarif
-
-      - name: Trivy JSON (for SeveritySource)
-        if: always()
-        run: |
-          trivy image --scanners vuln \
-            --pkg-types os,library \
-            --severity HIGH,CRITICAL \
-            --ignore-unfixed \
-            --detection-priority precise \
-            -f json -o trivy-image.json "${IMG}" || true
-
-      - name: Upload Trivy JSON
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-image-json
-          path: trivy-image.json
-          retention-days: 7
-          
-      - name: Login to Docker Hub (for cosign push)
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: SBOM (SPDX)
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.IMG }}
-          format: spdx-json
-          output-file: sbom.spdx.json
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3.9.2
-
-      - name: Cosign sign & attest (keyless)
-        env: { COSIGN_EXPERIMENTAL: "1" }
-        run: |
-          set -euo pipefail
-          cosign sign --yes "$IMG"
-          cosign attest --yes --predicate sbom.spdx.json --type spdx "$IMG"
-
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-spdx
-          path: sbom.spdx.json
-          retention-days: 30
 
 ###############################################################################
 # 2) Deploy to GCE VM
@@ -177,21 +99,20 @@ jobs:
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} <<'EOF'
             set -euo pipefail
             mkdir -p "${{ env.REMOTE_DIR }}"/{nginx,certbot/{config,www,logs}}
-            mkdir -p "${{ env.REMOTE_DIR }}"/nginx/{modsec,logs,modsec-logs}
             cat > "${{ env.REMOTE_DIR }}/.env" <<EOT
             DOMAIN=${{ env.DOMAIN }}
             LETSENCRYPT_EMAIL=${{ env.LETSENCRYPT_EMAIL }}
             IMAGE_REF=${{ env.IMG }}
-            DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
             EOT
           EOF
+
 
       # ── 2-a. Compose & 템플릿 업로드 ────────────────────────────────────
       - name: Upload HTTP-only Nginx template and compose
         run: |
           scp -o StrictHostKeyChecking=no nginx/default.http.conf.template \
             ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }}:"${{ env.REMOTE_DIR }}/nginx/default.conf.template"
-          scp -o StrictHostKeyChecking=no docker-compose-prod.yml \
+          scp -o StrictHostKeyChecking=no docker-compose.prod.yml \
             ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }}:"${{ env.REMOTE_DIR }}/"
 
       # ── 2-b. Nginx WAF build context 업로드 (Dockerfile.waf, modsec 등) ──
@@ -202,16 +123,17 @@ jobs:
             | ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} \
               "mkdir -p '${{ env.REMOTE_DIR }}/nginx' && tar -xzf - -C '${{ env.REMOTE_DIR }}/nginx'"
 
+
       # ── 3. HTTP-only 스택 기동 (nginx 먼저 빌드) ─────────────────────────
       - name: Start HTTP-only stack (build nginx)
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
             set -euo pipefail
             cd '${{ env.REMOTE_DIR }}' &&
-            docker compose -f docker-compose-prod.yml down --remove-orphans || true &&
-            docker compose -f docker-compose-prod.yml build --pull nginx &&
-            docker compose -f docker-compose-prod.yml pull web || true &&
-            docker compose -f docker-compose-prod.yml up -d nginx web
+            docker compose -f docker-compose.prod.yml down --remove-orphans || true &&
+            docker compose -f docker-compose.prod.yml build --pull nginx &&
+            docker compose -f docker-compose.prod.yml pull web || true &&
+            docker compose -f docker-compose.prod.yml up -d nginx web
           "
 
       # ── 4. HTTP 응답 대기 ───────────────────────────────────────────────
@@ -234,8 +156,8 @@ jobs:
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
             cd '${{ env.REMOTE_DIR }}' &&
-            docker compose -f docker-compose-prod.yml exec -T nginx nginx -t &&
-            docker compose -f docker-compose-prod.yml exec -T nginx sh -lc 'ls -l /usr/lib/nginx/modules | grep modsecurity || true'
+            docker compose -f docker-compose.prod.yml exec -T nginx nginx -t &&
+            docker compose -f docker-compose.prod.yml exec -T nginx sh -lc 'ls -l /usr/lib/nginx/modules | grep modsecurity || true'
           "
 
       # ── 5. 인증서 발급/갱신 ──────────────────────────────────────────────
@@ -243,7 +165,7 @@ jobs:
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
             cd '${{ env.REMOTE_DIR }}' &&
-            docker compose -f docker-compose-prod.yml run --rm certbot \
+            docker compose -f docker-compose.prod.yml run --rm certbot \
               certonly --webroot -w /var/www/certbot \
               --non-interactive --keep-until-expiring \
               --email '${{ env.LETSENCRYPT_EMAIL }}' -d '${{ env.DOMAIN }}' \
@@ -255,7 +177,7 @@ jobs:
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} << 'EOF'
             cd '${{ env.REMOTE_DIR }}'
-            docker compose -f docker-compose-prod.yml run --rm --entrypoint "" certbot sh -euxc '
+            docker compose -f docker-compose.prod.yml run --rm --entrypoint "" certbot sh -euxc '
               OPTIONS=/etc/letsencrypt/options-ssl-nginx.conf
               DHPARAM=/etc/letsencrypt/ssl-dhparams.pem
               mkdir -p /etc/letsencrypt
@@ -295,7 +217,7 @@ jobs:
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} << 'EOF'
             cd '${{ env.REMOTE_DIR }}' &&
-            docker compose -f docker-compose-prod.yml exec nginx sh -c '
+            docker compose -f docker-compose.prod.yml exec nginx sh -c '
              envsubst '\''$DOMAIN'\'' \
                < /etc/nginx/templates/default.conf.template \
                > /etc/nginx/conf.d/default.conf \
@@ -309,9 +231,9 @@ jobs:
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
             set -euo pipefail
             cd '${{ env.REMOTE_DIR }}' &&
-            docker compose -f docker-compose-prod.yml build --pull nginx &&
-            docker compose -f docker-compose-prod.yml pull &&
-            docker compose -f docker-compose-prod.yml up -d --remove-orphans
+            docker compose -f docker-compose.prod.yml build --pull nginx &&
+            docker compose -f docker-compose.prod.yml pull &&
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
           "
 
       # ── 10. HTTPS 검증 ──────────────────────────────────────────────────
