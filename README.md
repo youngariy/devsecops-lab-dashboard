@@ -80,14 +80,14 @@ graph TD
 
     subgraph CI_CD ["GitHub Actions (CI / Security / CD)"]
         direction TB
-        A1([Workflow 시작]) --> A2[보안 도구 실행\n(Trivy, Bandit, Cosign 등)];
-        A2 --> A3[결과 JSON/SARIF 생성];
+        A1([Workflow 시작]) --> A2["보안 도구 실행<br/>(Trivy, Bandit, Cosign 등)"];
+        A2 --> A3["결과 JSON/SARIF 생성"];
         A3 --> A4[[upload-artifact 액션 실행]];
     end
     class A1,A2,A3,A4 ghActions;
 
     subgraph GH_Cloud ["GitHub Cloud"]
-        B1[(Artifact 저장소\nJSON 파일들)];
+        B1[("Artifact 저장소<br/>JSON 파일들")];
     end
     class B1 storage;
 
@@ -95,11 +95,11 @@ graph TD
 
     subgraph Backend_System ["Backend (Flask API)"]
         direction TB
-        C1(Polling / Webhook 트리거) --> C2[① Run 정보 조회\n(GitHub API)];
-        C2 --> C3[② Artifact 목록 조회\n(GitHub API)];
-        C3 --> C4[③ 특정 Artifact 다운로드\n(GitHub API)];
-        C4 --> C5[④ JSON 파싱 & ⑤ 정규화];
-        C5 --> C6[(DB 저장\nPostgreSQL/SQLite)];
+        C1("Polling / Webhook 트리거") --> C2["Run 정보 조회<br/>(GitHub API)"];
+        C2 --> C3["Artifact 목록 조회<br/>(GitHub API)"];
+        C3 --> C4["특정 Artifact 다운로드<br/>(GitHub API)"];
+        C4 --> C5["JSON 파싱 & 정규화"];
+        C5 --> C6[("DB 저장<br/>PostgreSQL/SQLite")];
     end
     class C1,C2,C3,C4,C5 process;
     class C6 db;
@@ -107,7 +107,7 @@ graph TD
     B1 -.->|다운로드| C4;
 
     subgraph Frontend_System ["Frontend (Next.js)"]
-        D1[대시보드 UI\n(요약/이력/상세)];
+        D1["대시보드 UI<br/>(요약/이력/상세)"];
     end
     class D1 frontend;
 
