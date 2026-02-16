@@ -1,4 +1,4 @@
-name: CI with Docker & Docker Compose
+﻿name: CI with Docker & Docker Compose
 
 on:
   push:
@@ -16,15 +16,15 @@ jobs:
 
       - name: Build & start services
         run: |
-          docker compose up -d --build
+          docker compose -f infra/docker/docker-compose.yml up -d --build api
           # give the app a moment to start
           sleep 10
 
       - name: Run test suite
         run: |
-          docker compose exec web pytest
+          docker compose -f infra/docker/docker-compose.yml exec -T api pytest
 
       - name: Tear down
         if: always()
         run: |
-          docker compose down --volumes --remove-orphans
+          docker compose -f infra/docker/docker-compose.yml down --volumes --remove-orphans

@@ -1,4 +1,4 @@
-# 📘 DevOps Lab Dashboard
+# 📘 DevSecOps-Lab-Dashboard
 
 ### DevSecOps 파이프라인 시각화 및 보안 결과 수집 시스템
 
@@ -8,7 +8,7 @@
 
 ## 1-1. 프로젝트명
 
-**DevOps Lab Dashboard**
+**DevSecOps Lab Dashboard**
 
 ## 1-2. 프로젝트 목적
 
@@ -343,6 +343,3 @@ GitHub API 호출 후 최신 데이터 동기화
 
 ---
 
-이 기획서는
-**“GitHub Actions 상태 조회 서비스”가 아니라
-“Artifact 기반 DevSecOps 데이터 수집·정규화·시각화 시스템”**이라는 점을 명확히 보여주는 구조입니다.

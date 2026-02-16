@@ -1,31 +1,38 @@
-
-# version: "3.9"    # <- 경고만 유발하므로 그대로 생략
-
-services:
-  web:
-    image: ${IMAGE_REF}
-
-    environment: # <- 매핑 형식
+﻿services:
+  api:
+    image: ${API_IMAGE_REF}
+    environment:
       FLASK_ENV: production
+      GITHUB_OWNER: ${GITHUB_OWNER}
+      GITHUB_REPO: ${GITHUB_REPO}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      SYNC_TOKEN: ${SYNC_TOKEN}
     expose:
       - "5000"
     restart: unless-stopped
 
+  web:
+    image: ${WEB_IMAGE_REF}
+    expose:
+      - "3000"
+    environment:
+      API_BASE: http://api:5000
+    restart: unless-stopped
+
   nginx:
     container_name: nginx
-
     image: nginx:alpine
     depends_on:
+      - api
       - web
     ports:
       - "80:80"
-
       - "443:443"
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./certbot/config:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
-    environment: # <- 매핑 형식
+    environment:
       DOMAIN: ${DOMAIN}
     entrypoint:
       - sh
@@ -65,11 +72,3 @@ services:
         sleep 12h;
       done"
     restart: unless-stopped
-
-volumes:
-  certbot-config:
-    driver: local
-  certbot-www:
-    driver: local
-
-  
