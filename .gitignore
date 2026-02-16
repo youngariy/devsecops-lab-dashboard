@@ -3,3 +3,11 @@ venv/
 __pycache__/
 *.pyc
 .env
+.pytest_cache/
+*.pytest_cache/
+pytest-cache-files-*
+apps/api/pytest-cache-files-*
+apps/api/tests/.testdata/
+node_modules/
+.next/
+out/
