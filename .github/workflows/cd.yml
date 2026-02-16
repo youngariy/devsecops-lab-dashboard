@@ -205,7 +205,7 @@ jobs:
 
           echo "cosign verify OK for ${IMG}"
 
-      # ?? 0. SSH ???????????????????????????????????????????????????????
+      # 0) SSH setup
       - name: Set up SSH agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -221,7 +221,7 @@ jobs:
       - name: Test SSH
         run: ssh -o ConnectTimeout=10 ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "echo OK"
 
-      # ?? 1. ?? & .env ??????????????????????????????????????????????
+      # 1) Prepare remote directory and .env
       - name: Prepare remote directory & .env
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} <<'EOF'
@@ -241,7 +241,7 @@ jobs:
           EOF
 
 
-      # ?? 2. HTTP-only ??& Compose ????????????????????????????????
+      # 2) Upload HTTP-only Nginx template and compose file
       - name: Upload HTTP-only Nginx template and compose
         run: |
           scp -o StrictHostKeyChecking=no infra/nginx/default.http.conf.template \
@@ -249,7 +249,7 @@ jobs:
           scp -o StrictHostKeyChecking=no infra/docker/docker-compose.prod.yml \
             ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }}:"${{ env.REMOTE_DIR }}/"
 
-      # ?? 3. ?  (80) ???????????????????????????????????????????????
+      # 3) Start HTTP-only stack on port 80
       - name: Start HTTP-only stack
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
@@ -258,7 +258,7 @@ jobs:
             docker compose -f docker-compose.prod.yml up -d nginx api web
           "
 
-      # ?? 4. HTTP ? ?????????????????????????????????????????????????
+      # 4) Wait for HTTP readiness
       - name: Wait for HTTP
         run: |
           ok=0
@@ -275,7 +275,26 @@ jobs:
             exit 1
           fi
 
-      # ?? 5. ???/ ??????????????????????????????????????????????
+      - name: Diagnose HTTP failure
+        if: failure()
+        run: |
+          echo "=== runner-side checks ==="
+          getent hosts ${{ env.DOMAIN }} || true
+          curl -vk --max-time 10 http://${{ env.DOMAIN }} || true
+
+          echo "=== remote-side checks ==="
+          ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
+            set -x
+            cd '${{ env.REMOTE_DIR }}'
+            docker compose -f docker-compose.prod.yml ps || true
+            docker compose -f docker-compose.prod.yml logs --tail=150 nginx || true
+            docker compose -f docker-compose.prod.yml logs --tail=150 api || true
+            docker compose -f docker-compose.prod.yml logs --tail=150 web || true
+            ss -ltnp | grep ':80\\|:443' || true
+            curl -vk --max-time 10 -H 'Host: ${{ env.DOMAIN }}' http://127.0.0.1 || true
+          "
+
+      # 5) Issue or renew certificates
       - name: Issue / Renew SSL
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
@@ -287,7 +306,7 @@ jobs:
               --agree-tos --no-eff-email --rsa-key-size 4096
           "
 
-      # ?? 6. SSL helper ? ?(+?? ) ??????????????????????????
+      # 6) Ensure SSL helper files for Nginx
       - name: Provide ssl helper files for nginx
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} <<'EOF'
@@ -296,10 +315,10 @@ jobs:
               OPTIONS=/etc/letsencrypt/options-ssl-nginx.conf
               DHPARAM=/etc/letsencrypt/ssl-dhparams.pem
 
-              # 0) ???? ?
+              # Ensure target directory exists
               mkdir -p /etc/letsencrypt
 
-              # 1) options-ssl-nginx.conf ?
+              # Ensure options-ssl-nginx.conf exists
               if [ ! -f "$OPTIONS" ]; then
                 SRC=$(find /usr /opt -maxdepth 7 -type f -name options-ssl-nginx.conf 2>/dev/null | head -n1 || true)
                 if [ -n "$SRC" ]; then
@@ -311,7 +330,7 @@ jobs:
                 fi
               fi
 
-              # 1-b)  TLS ? (fallback)
+              # Fallback TLS options
               if [ ! -s "$OPTIONS" ]; then
                 printf "%s\n" \
                   "ssl_session_cache   shared:SSL:10m;" \
@@ -322,20 +341,20 @@ jobs:
                   > "$OPTIONS"
               fi
 
-              # 2) ssl-dhparams.pem (??2048bit ?)
+              # Create dhparam file if missing
               if [ ! -f "$DHPARAM" ]; then
                 openssl dhparam -out "$DHPARAM" 2048
               fi
             '
           EOF
 
-      # ?? 7. HTTPS ????????????????????????????????????????????????
+      # 7) Upload HTTPS Nginx template
       - name: Upload HTTPS Nginx template
         run: |
           scp -o StrictHostKeyChecking=no infra/nginx/default.https.conf.template \
             ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }}:"${{ env.REMOTE_DIR }}/nginx/default.conf.template"
 
-      # ?? 8. conf ???& nginx reload ???????????????????????????????????
+      # 8) Render Nginx config and reload
       - name: Apply HTTPS config & reload nginx
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} <<'EOF'
@@ -374,7 +393,7 @@ jobs:
             '
           EOF
 
-      # ?? 9.  ?? pull & ? ? ?????????????????????????????????
+      # 9) Pull latest images and redeploy
       - name: Deploy latest stack
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
@@ -383,7 +402,7 @@ jobs:
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
           "
 
-      # ?? 10. HTTPS ???????????????????????????????????????????????????
+      # 10) Verify HTTPS readiness
       - name: Verify HTTPS
         run: |
           ok=0
@@ -414,13 +433,13 @@ jobs:
             curl -vk --max-time 10 https://${{ env.DOMAIN }} || true
           "
 
-      # ?? 11. ????? ? ??????????????????????????????????????????
+      # 11) Prune old images
       - name: Prune images
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "docker image prune -f --filter 'until=24h' || true"
 
 ###############################################################################
-# 4) ? ? ()
+# 4) Notifications
 ###############################################################################
   notify:
     needs: [ build-and-push, build-and-push-web, deploy ]
