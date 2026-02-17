@@ -259,19 +259,25 @@ jobs:
           "
 
       # 4) Wait for HTTP readiness
-      - name: Wait for HTTP
+      - name: Wait for HTTP health endpoint
         run: |
+          if [[ "${{ env.DOMAIN }}" == http://* || "${{ env.DOMAIN }}" == https://* ]]; then
+            echo "DOMAIN secret must be hostname only (no scheme): '${{ env.DOMAIN }}'"
+            exit 1
+          fi
+
+          HEALTH_URL="http://${{ env.DOMAIN }}/health"
           ok=0
-          for i in {1..24}; do
-            if curl -sSf -m 5 http://${{ env.DOMAIN }} >/dev/null 2>&1; then
-              echo "HTTP OK"
+          for i in {1..30}; do
+            if curl -sSf -m 10 "${HEALTH_URL}" >/dev/null 2>&1; then
+              echo "HTTP health OK: ${HEALTH_URL}"
               ok=1
               break
             fi
-            echo "...waiting HTTP (${i}/24)"; sleep 5
+            echo "...waiting HTTP health (${i}/30): ${HEALTH_URL}"; sleep 5
           done
           if [ "$ok" -ne 1 ]; then
-            echo "HTTP verification failed for http://${{ env.DOMAIN }}"
+            echo "HTTP health verification failed for ${HEALTH_URL}"
             exit 1
           fi
 
@@ -280,7 +286,8 @@ jobs:
         run: |
           echo "=== runner-side checks ==="
           getent hosts ${{ env.DOMAIN }} || true
-          curl -vk --max-time 10 http://${{ env.DOMAIN }} || true
+          curl -vk --max-time 10 http://${{ env.DOMAIN }}/health || true
+          curl -vk --max-time 10 http://${{ env.DOMAIN }}/ || true
 
           echo "=== remote-side checks ==="
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
@@ -291,6 +298,7 @@ jobs:
             docker compose -f docker-compose.prod.yml logs --tail=150 api || true
             docker compose -f docker-compose.prod.yml logs --tail=150 web || true
             ss -ltnp | grep ':80\\|:443' || true
+            curl -vk --max-time 10 -H 'Host: ${{ env.DOMAIN }}' http://127.0.0.1/health || true
             curl -vk --max-time 10 -H 'Host: ${{ env.DOMAIN }}' http://127.0.0.1 || true
           "
 
