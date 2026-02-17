@@ -3,7 +3,7 @@ from typing import Any
 
 from ..models.workflow_run import WorkflowRun
 from ..repositories.workflow_run_repository import WorkflowRunRepository
-from .github_service import GithubService, GithubServiceError
+from .github_service import GithubService
 
 EXCLUDED_WORKFLOWS = {"Dashboard Sync on Workflow Completion"}
 
@@ -19,31 +19,20 @@ def _category_from_name(workflow_name: str) -> str:
     return "other"
 
 
-def _tool_counter(runs: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
-    counters: dict[str, dict[str, int]] = {
-        "trivy": {"critical": 0, "high": 0},
-        "bandit": {"high": 0},
-        "semgrep": {"findings": 0},
-        "pip_audit": {"vuln_packages": 0},
-        "gitleaks": {"leaks": 0},
-    }
-    for run in runs:
-        tools = run.get("summary_json", {}).get("tools", {})
-        for key, fields in counters.items():
-            src = tools.get(key, {})
-            for field in fields:
-                fields[field] += int(src.get(field, 0) or 0)
-    return counters
-
-
 class PipelineService:
     def __init__(self, repository: WorkflowRunRepository, github: GithubService):
         self.repository = repository
         self.github = github
 
-    def list_runs(self, limit: int = 30) -> list[dict[str, Any]]:
+    def list_runs(self, limit: int = 30, page: int = 1) -> tuple[list[dict[str, Any]], int, int]:
         runs = self.repository.list_runs()
-        return runs[: max(1, min(limit, 100))]
+        safe_limit = max(1, min(limit, 100))
+        safe_page = max(1, page)
+        total = len(runs)
+        total_pages = max(1, (total + safe_limit - 1) // safe_limit)
+        start = (safe_page - 1) * safe_limit
+        end = start + safe_limit
+        return runs[start:end], total, total_pages
 
     def summary(self) -> dict[str, Any]:
         runs = self.repository.list_runs()
@@ -53,7 +42,6 @@ class PipelineService:
                 "status_counts": {},
                 "category_status": {"ci": "unknown", "security": "unknown", "cd": "unknown"},
                 "recent_failures": [],
-                "security_summary": {"tools": _tool_counter([])},
             }
 
         status_counts = Counter((r.get("conclusion") or "unknown") for r in runs)
@@ -74,7 +62,6 @@ class PipelineService:
                 "cd": latest_for("cd"),
             },
             "recent_failures": recent_failures,
-            "security_summary": {"tools": _tool_counter(runs)},
         }
 
     def sync(self, per_page: int = 30) -> dict[str, Any]:
@@ -84,22 +71,6 @@ class PipelineService:
             if raw.get("name", "") in EXCLUDED_WORKFLOWS:
                 continue
             raw["category"] = _category_from_name(raw.get("name", ""))
-            if raw["category"] == "security":
-                run_id = raw.get("id")
-                if isinstance(run_id, int):
-                    try:
-                        summary = self.github.get_security_summary_for_run(run_id)
-                    except GithubServiceError:
-                        raw["summary_json"] = {
-                            "ingest_error": "failed_to_fetch_security_summary_artifact"
-                        }
-                        summary = {}
-                    if summary:
-                        raw["summary_json"] = summary
-                    elif "summary_json" not in raw:
-                        raw["summary_json"] = {
-                            "ingest_error": "security_summary_artifact_not_found_or_empty"
-                        }
             transformed.append(WorkflowRun.from_github_run(raw).to_dict())
         self.repository.save_runs(transformed)
         return {"synced": len(transformed)}
