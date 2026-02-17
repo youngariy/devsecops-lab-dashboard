@@ -182,6 +182,7 @@ jobs:
           # GITLEAKS_ENABLE_SUMMARY: "true"
 
       - name: Build security summary JSON
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -215,6 +216,7 @@ jobs:
           cat security-summary.json
 
       - name: Upload security summary artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: security-summary-run-${{ github.run_id }}
