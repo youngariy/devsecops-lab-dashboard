@@ -271,6 +271,9 @@ jobs:
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
             cd '${{ env.REMOTE_DIR }}' &&
             docker compose -f docker-compose.prod.yml down --remove-orphans || true &&
+            docker system prune -af || true &&
+            docker builder prune -af || true &&
+            docker container prune -f || true &&
             docker compose -f docker-compose.prod.yml up -d nginx api web
           "
 
@@ -431,12 +434,11 @@ jobs:
             df -h || true
           "
 
-      # 10) Pull latest images and redeploy
-      - name: Deploy latest stack
+      # 10) Ensure full stack services (avoid duplicate pull on low-disk hosts)
+      - name: Ensure full stack services
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
             cd '${{ env.REMOTE_DIR }}' &&
-            docker compose -f docker-compose.prod.yml pull &&
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
           "
 

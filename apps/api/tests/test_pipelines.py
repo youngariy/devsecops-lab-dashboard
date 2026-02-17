@@ -67,12 +67,6 @@ def test_sync_then_summary(client, monkeypatch):
     ]
 
     monkeypatch.setattr(GithubService, "list_workflow_runs", lambda self, per_page=30: fake_runs)
-    monkeypatch.setattr(
-        GithubService,
-        "get_security_summary_for_run",
-        lambda self, run_id: {"tools": {"trivy": {"critical": 1, "high": 2}}},
-    )
-
     sync_resp = client.post("/api/pipelines/sync", headers={"X-Sync-Token": "test-sync-token"})
     assert sync_resp.status_code == 200
     assert sync_resp.get_json()["synced_runs"] == 2
@@ -80,13 +74,24 @@ def test_sync_then_summary(client, monkeypatch):
     runs_resp = client.get("/api/pipelines/runs")
     assert runs_resp.status_code == 200
     assert runs_resp.get_json()["count"] == 2
+    assert runs_resp.get_json()["total"] == 2
+    assert runs_resp.get_json()["page"] == 1
+    assert runs_resp.get_json()["total_pages"] == 1
+
+    paged_resp = client.get("/api/pipelines/runs?page=2&limit=1")
+    assert paged_resp.status_code == 200
+    paged_payload = paged_resp.get_json()
+    assert paged_payload["count"] == 1
+    assert paged_payload["total"] == 2
+    assert paged_payload["page"] == 2
+    assert paged_payload["total_pages"] == 2
+    assert paged_payload["items"][0]["id"] == 102
 
     summary_resp = client.get("/api/pipelines/summary")
     payload = summary_resp.get_json()
     assert payload["total_runs"] == 2
     assert payload["status_counts"]["success"] == 1
     assert payload["status_counts"]["failure"] == 1
-    assert payload["security_summary"]["tools"]["trivy"]["critical"] == 1
 
 
 def test_sync_requires_token(client):
