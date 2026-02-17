@@ -1,4 +1,4 @@
-﻿# HTTP only - issue/renew certificates
+# HTTP only - issue/renew certificates
 server {
     listen 80;
     server_name $DOMAIN;
