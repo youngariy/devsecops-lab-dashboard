@@ -86,9 +86,16 @@ class PipelineService:
                     try:
                         summary = self.github.get_security_summary_for_run(run_id)
                     except GithubServiceError:
+                        raw["summary_json"] = {
+                            "ingest_error": "failed_to_fetch_security_summary_artifact"
+                        }
                         summary = {}
                     if summary:
                         raw["summary_json"] = summary
+                    elif "summary_json" not in raw:
+                        raw["summary_json"] = {
+                            "ingest_error": "security_summary_artifact_not_found_or_empty"
+                        }
             transformed.append(WorkflowRun.from_github_run(raw).to_dict())
         self.repository.save_runs(transformed)
         return {"synced": len(transformed)}
