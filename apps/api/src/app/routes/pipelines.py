@@ -21,9 +21,18 @@ def _pipeline_service() -> PipelineService:
 
 @pipelines_bp.get("/runs")
 def get_runs():
-    limit = request.args.get("limit", default=30, type=int)
-    runs = _pipeline_service().list_runs(limit=limit)
-    return jsonify(build_runs_response(runs))
+    limit = request.args.get("limit", default=10, type=int)
+    page = request.args.get("page", default=1, type=int)
+    runs, total, total_pages = _pipeline_service().list_runs(limit=limit, page=page)
+    return jsonify(
+        build_runs_response(
+            runs=runs,
+            total=total,
+            page=max(1, page),
+            limit=max(1, min(limit, 100)),
+            total_pages=total_pages,
+        )
+    )
 
 
 @pipelines_bp.get("/summary")

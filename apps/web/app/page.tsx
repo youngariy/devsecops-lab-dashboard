@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { getDashboardData } from "../lib/api";
 
 const statusTone: Record<string, string> = {
@@ -8,8 +8,17 @@ const statusTone: Record<string, string> = {
   unknown: "tone-muted"
 };
 
-export default async function HomePage() {
-  const { summary, runs } = await getDashboardData();
+type HomeProps = {
+  searchParams?: {
+    page?: string;
+  };
+};
+
+export default async function HomePage({ searchParams }: HomeProps) {
+  const pageValue = Number(searchParams?.page ?? "1");
+  const currentPage = Number.isFinite(pageValue) && pageValue > 0 ? Math.floor(pageValue) : 1;
+  const { summary, runs, totalPages, totalRuns } = await getDashboardData(currentPage, 10);
+  const pageNumbers = Array.from({ length: totalPages }, (_, idx) => idx + 1);
 
   return (
     <main className="page">
@@ -49,7 +58,7 @@ export default async function HomePage() {
       <section className="panel reveal delay-2">
         <header className="panel-header">
           <h3>Recent Pipeline Runs</h3>
-          <span>{runs.length} items</span>
+          <span>{totalRuns} total</span>
         </header>
         <div className="table-wrap">
           <table>
@@ -94,15 +103,24 @@ export default async function HomePage() {
             </tbody>
           </table>
         </div>
-      </section>
-
-      <section className="panel reveal delay-3">
-        <header className="panel-header">
-          <h3>Security Tool Summary</h3>
-        </header>
-        <pre className="json">
-          {JSON.stringify(summary?.security_summary?.tools ?? {}, null, 2)}
-        </pre>
+        {totalPages > 1 && (
+          <nav className="pagination" aria-label="Pipeline runs pages">
+            <Link href={`/?page=${Math.max(1, currentPage - 1)}`} aria-disabled={currentPage === 1}>
+              Prev
+            </Link>
+            {pageNumbers.map((page) => (
+              <Link key={page} href={`/?page=${page}`} aria-current={page === currentPage ? "page" : undefined}>
+                {page}
+              </Link>
+            ))}
+            <Link
+              href={`/?page=${Math.min(totalPages, currentPage + 1)}`}
+              aria-disabled={currentPage === totalPages}
+            >
+              Next
+            </Link>
+          </nav>
+        )}
       </section>
     </main>
   );

@@ -13,6 +13,10 @@ export type PipelineRun = {
 
 type RunsResponse = {
   count: number;
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
   items: PipelineRun[];
 };
 
@@ -21,9 +25,6 @@ type SummaryResponse = {
   status_counts: Record<string, number>;
   category_status: Record<string, string>;
   recent_failures: PipelineRun[];
-  security_summary: {
-    tools: Record<string, Record<string, number>>;
-  };
 };
 
 function apiBase(): string {
@@ -45,13 +46,18 @@ async function safeFetch<T>(path: string): Promise<T | null> {
   }
 }
 
-export async function getDashboardData() {
+export async function getDashboardData(page = 1, limit = 10) {
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.max(1, Math.min(limit, 100));
   const [summary, runs] = await Promise.all([
     safeFetch<SummaryResponse>("/api/pipelines/summary"),
-    safeFetch<RunsResponse>("/api/pipelines/runs?limit=10")
+    safeFetch<RunsResponse>(`/api/pipelines/runs?limit=${safeLimit}&page=${safePage}`)
   ]);
   return {
     summary,
-    runs: runs?.items ?? []
+    runs: runs?.items ?? [],
+    runsPage: runs?.page ?? safePage,
+    totalPages: runs?.total_pages ?? 1,
+    totalRuns: runs?.total ?? 0
   };
 }
