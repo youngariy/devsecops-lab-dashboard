@@ -5,6 +5,8 @@ from ..models.workflow_run import WorkflowRun
 from ..repositories.workflow_run_repository import WorkflowRunRepository
 from .github_service import GithubService, GithubServiceError
 
+EXCLUDED_WORKFLOWS = {"Dashboard Sync on Workflow Completion"}
+
 
 def _category_from_name(workflow_name: str) -> str:
     lowered = workflow_name.lower()
@@ -79,6 +81,8 @@ class PipelineService:
         raw_runs = self.github.list_workflow_runs(per_page=per_page)
         transformed: list[dict[str, Any]] = []
         for raw in raw_runs:
+            if raw.get("name", "") in EXCLUDED_WORKFLOWS:
+                continue
             raw["category"] = _category_from_name(raw.get("name", ""))
             if raw["category"] == "security":
                 run_id = raw.get("id")
