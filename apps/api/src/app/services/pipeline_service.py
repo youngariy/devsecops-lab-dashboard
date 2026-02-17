@@ -3,7 +3,7 @@ from typing import Any
 
 from ..models.workflow_run import WorkflowRun
 from ..repositories.workflow_run_repository import WorkflowRunRepository
-from .github_service import GithubService
+from .github_service import GithubService, GithubServiceError
 
 
 def _category_from_name(workflow_name: str) -> str:
@@ -80,6 +80,15 @@ class PipelineService:
         transformed: list[dict[str, Any]] = []
         for raw in raw_runs:
             raw["category"] = _category_from_name(raw.get("name", ""))
+            if raw["category"] == "security":
+                run_id = raw.get("id")
+                if isinstance(run_id, int):
+                    try:
+                        summary = self.github.get_security_summary_for_run(run_id)
+                    except GithubServiceError:
+                        summary = {}
+                    if summary:
+                        raw["summary_json"] = summary
             transformed.append(WorkflowRun.from_github_run(raw).to_dict())
         self.repository.save_runs(transformed)
         return {"synced": len(transformed)}

@@ -91,7 +91,7 @@ jobs:
         timeout-minutes: 5
         run: |
           if [ -f apps/api/requirements.txt ]; then
-            pip-audit -r apps/api/requirements.txt --strict || true
+            pip-audit -r apps/api/requirements.txt -f json -o pip-audit.json || true
           fi
 
       # Hadolint (Dockerfile lint) via container CLI (stable behavior)
@@ -180,3 +180,43 @@ jobs:
           # GITLEAKS_ENABLE_COMMENTS: "true"
           # GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
           # GITLEAKS_ENABLE_SUMMARY: "true"
+
+      - name: Build security summary JSON
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          semgrep_findings=$(jq '[.runs[].results] | flatten | length' semgrep.sarif 2>/dev/null || echo 0)
+          bandit_high=$(jq '[.runs[].results[] | select((.level // "") == "error")] | length' bandit.sarif 2>/dev/null || echo 0)
+          trivy_critical=$(jq '[.runs[].results[] | select((.level // "") == "error")] | length' trivy-fs.sarif 2>/dev/null || echo 0)
+          trivy_high=$(jq '[.runs[].results[] | select((.level // "") == "warning")] | length' trivy-fs.sarif 2>/dev/null || echo 0)
+          pip_vuln_packages=$(jq '[.dependencies[] | select(((.vulns // []) | length) > 0)] | length' pip-audit.json 2>/dev/null || echo 0)
+
+          gitleaks_file=$(find . -maxdepth 3 -type f \( -name "*gitleaks*.sarif" -o -name "*gitleaks*.json" \) | head -n1 || true)
+          if [ -n "${gitleaks_file}" ] && [[ "${gitleaks_file}" == *.sarif ]]; then
+            gitleaks_leaks=$(jq '[.runs[].results] | flatten | length' "${gitleaks_file}" 2>/dev/null || echo 0)
+          elif [ -n "${gitleaks_file}" ] && [[ "${gitleaks_file}" == *.json ]]; then
+            gitleaks_leaks=$(jq 'length' "${gitleaks_file}" 2>/dev/null || echo 0)
+          else
+            gitleaks_leaks=0
+          fi
+
+          cat > security-summary.json <<EOF
+          {
+            "tools": {
+              "trivy": { "critical": ${trivy_critical}, "high": ${trivy_high} },
+              "bandit": { "high": ${bandit_high} },
+              "semgrep": { "findings": ${semgrep_findings} },
+              "pip_audit": { "vuln_packages": ${pip_vuln_packages} },
+              "gitleaks": { "leaks": ${gitleaks_leaks} }
+            }
+          }
+          EOF
+          cat security-summary.json
+
+      - name: Upload security summary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-summary-run-${{ github.run_id }}
+          path: security-summary.json
+          retention-days: 14
