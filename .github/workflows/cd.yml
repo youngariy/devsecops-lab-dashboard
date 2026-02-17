@@ -12,6 +12,8 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
       image-digest: ${{ steps.build.outputs.digest }}
@@ -30,6 +32,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
+          github-token: ${{ github.token }}
           images: ${{ secrets.DOCKERHUB_USERNAME }}/myflask
           tags: |
             type=ref,event=branch
@@ -49,6 +52,8 @@ jobs:
 
   build-and-push-web:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
       image-digest: ${{ steps.build.outputs.digest }}
@@ -67,6 +72,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
+          github-token: ${{ github.token }}
           images: ${{ secrets.DOCKERHUB_USERNAME }}/myflask-web
           tags: |
             type=ref,event=branch
