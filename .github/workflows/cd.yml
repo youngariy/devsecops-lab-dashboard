@@ -189,6 +189,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate nginx templates (no BOM)
+        run: |
+          set -euo pipefail
+          for f in infra/nginx/default.http.conf.template infra/nginx/default.https.conf.template; do
+            if LC_ALL=C grep -n $'^\xEF\xBB\xBF' "$f" >/dev/null; then
+              echo "BOM detected in $f. Save as UTF-8 without BOM."
+              exit 1
+            fi
+          done
       
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.9.2
