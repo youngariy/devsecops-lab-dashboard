@@ -67,6 +67,11 @@ def test_sync_then_summary(client, monkeypatch):
     ]
 
     monkeypatch.setattr(GithubService, "list_workflow_runs", lambda self, per_page=30: fake_runs)
+    monkeypatch.setattr(
+        GithubService,
+        "get_security_summary_for_run",
+        lambda self, run_id: {"tools": {"trivy": {"critical": 1, "high": 2}}},
+    )
 
     sync_resp = client.post("/api/pipelines/sync", headers={"X-Sync-Token": "test-sync-token"})
     assert sync_resp.status_code == 200
