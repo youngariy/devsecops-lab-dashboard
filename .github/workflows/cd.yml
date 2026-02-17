@@ -417,7 +417,21 @@ jobs:
             '
           EOF
 
-      # 9) Pull latest images and redeploy
+      # 9) Reclaim disk before pull (avoid no space left on device)
+      - name: Reclaim docker disk space
+        run: |
+          ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
+            set -euxo pipefail
+            df -h || true
+            docker system df || true
+            docker image prune -af || true
+            docker builder prune -af || true
+            docker container prune -f || true
+            docker system df || true
+            df -h || true
+          "
+
+      # 10) Pull latest images and redeploy
       - name: Deploy latest stack
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
@@ -426,7 +440,7 @@ jobs:
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
           "
 
-      # 10) Verify HTTPS readiness
+      # 11) Verify HTTPS readiness
       - name: Verify HTTPS
         run: |
           ok=0
@@ -443,31 +457,6 @@ jobs:
             exit 1
           fi
 
-      # 11) Sync pipeline runs into dashboard storage
-      - name: Sync pipeline data
-        env:
-          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
-        run: |
-          set -euo pipefail
-          SYNC_URL="https://${{ env.DOMAIN }}/api/pipelines/sync?per_page=50"
-          ok=0
-          for i in {1..6}; do
-            if curl -sSf -m 15 -X POST \
-              -H "X-Sync-Token: ${SYNC_TOKEN}" \
-              "${SYNC_URL}" >/tmp/sync-response.json; then
-              echo "Sync OK: ${SYNC_URL}"
-              cat /tmp/sync-response.json
-              ok=1
-              break
-            fi
-            echo "...waiting sync (${i}/6): ${SYNC_URL}"
-            sleep 5
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo "Sync failed: ${SYNC_URL}"
-            exit 1
-          fi
-
       - name: Diagnose HTTPS failure
         if: failure()
         run: |
@@ -480,8 +469,6 @@ jobs:
             ls -al certbot/config || true
             ss -ltnp | grep ':443' || true
             curl -vk --max-time 10 https://${{ env.DOMAIN }} || true
-            curl -vk --max-time 15 -X POST -H 'X-Sync-Token: ${{ secrets.SYNC_TOKEN }}' \
-              https://${{ env.DOMAIN }}/api/pipelines/sync?per_page=5 || true
           "
 
       # 12) Prune old images
