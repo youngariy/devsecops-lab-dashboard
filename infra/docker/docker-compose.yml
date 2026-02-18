@@ -7,6 +7,9 @@ services:
       - "5000"
     environment:
       - FLASK_ENV=development
+    volumes:
+      - ../../apps/api/tests:/app/tests:ro
+      - ../../apps/api/pytest.ini:/app/pytest.ini:ro
 
   web:
     build:
