@@ -9,7 +9,10 @@ pipelines_bp = Blueprint("pipelines", __name__, url_prefix="/api/pipelines")
 
 
 def _pipeline_service() -> PipelineService:
-    repo = WorkflowRunRepository(current_app.config["RUNS_STORAGE_PATH"])
+    repo = WorkflowRunRepository(
+        storage_path=current_app.config["RUNS_STORAGE_PATH"],
+        legacy_json_path=current_app.config.get("RUNS_LEGACY_JSON_PATH"),
+    )
     github = GithubService(
         api_base=current_app.config["GITHUB_API_BASE"],
         owner=current_app.config["GITHUB_OWNER"],
@@ -23,7 +26,14 @@ def _pipeline_service() -> PipelineService:
 def get_runs():
     limit = request.args.get("limit", default=10, type=int)
     page = request.args.get("page", default=1, type=int)
-    runs, total, total_pages = _pipeline_service().list_runs(limit=limit, page=page)
+    category = request.args.get("category", default="", type=str)
+    branch = request.args.get("branch", default="", type=str)
+    runs, total, total_pages = _pipeline_service().list_runs(
+        limit=limit,
+        page=page,
+        category=category,
+        branch=branch,
+    )
     return jsonify(
         build_runs_response(
             runs=runs,
@@ -31,6 +41,10 @@ def get_runs():
             page=max(1, page),
             limit=max(1, min(limit, 100)),
             total_pages=total_pages,
+            filters={
+                "category": category.strip().lower(),
+                "branch": branch.strip(),
+            },
         )
     )
 
@@ -38,6 +52,17 @@ def get_runs():
 @pipelines_bp.get("/summary")
 def get_summary():
     return jsonify(_pipeline_service().summary())
+
+
+@pipelines_bp.get("/deployment")
+def get_deployment():
+    return jsonify(_pipeline_service().deployment_summary())
+
+
+@pipelines_bp.get("/security-trends")
+def get_security_trends():
+    days = request.args.get("days", default=14, type=int)
+    return jsonify(_pipeline_service().security_trends(days=days))
 
 
 @pipelines_bp.post("/sync")

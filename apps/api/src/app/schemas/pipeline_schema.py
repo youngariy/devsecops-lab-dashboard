@@ -2,7 +2,12 @@ from typing import Any
 
 
 def build_runs_response(
-    runs: list[dict[str, Any]], total: int, page: int, limit: int, total_pages: int
+    runs: list[dict[str, Any]],
+    total: int,
+    page: int,
+    limit: int,
+    total_pages: int,
+    filters: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "count": len(runs),
@@ -10,6 +15,7 @@ def build_runs_response(
         "page": page,
         "limit": limit,
         "total_pages": total_pages,
+        "filters": filters or {},
         "items": runs,
     }
 
