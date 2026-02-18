@@ -47,3 +47,24 @@ def test_summarize_trivy_json_and_sarif_tool():
     assert summary["tools"]["trivy"]["medium"] == 1
     assert summary["tools"]["semgrep"]["high"] == 1
     assert summary["tools"]["semgrep"]["medium"] == 1
+
+
+def test_summarize_zap_json_by_artifact_name():
+    zap_payload = {
+        "site": [
+            {
+                "alerts": [
+                    {"riskdesc": "High (Medium)"},
+                    {"riskdesc": "Medium (Medium)"},
+                    {"riskdesc": "Low (Low)"},
+                ]
+            }
+        ]
+    }
+    archives = [("zap-report", _zip_with_json("report_json.json", zap_payload))]
+
+    summary = summarize_artifact_archives(archives)
+
+    assert summary["tools"]["zap"]["high"] == 1
+    assert summary["tools"]["zap"]["medium"] == 1
+    assert summary["tools"]["zap"]["low"] == 1

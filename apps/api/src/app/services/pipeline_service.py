@@ -7,7 +7,7 @@ from ..repositories.workflow_run_repository import WorkflowRunRepository
 from .github_service import GithubService
 
 EXCLUDED_WORKFLOWS = {"Dashboard Sync on Workflow Completion"}
-SECURITY_TOOLS = ("trivy", "bandit", "semgrep", "pip_audit", "gitleaks")
+SECURITY_TOOLS = ("trivy", "bandit", "semgrep", "pip_audit", "gitleaks", "zap")
 SEVERITIES = ("critical", "high", "medium", "low", "unknown")
 
 
