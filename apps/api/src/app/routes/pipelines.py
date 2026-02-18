@@ -1,25 +1,17 @@
 from flask import Blueprint, current_app, jsonify, request
 
-from ..repositories.workflow_run_repository import WorkflowRunRepository
 from ..schemas.pipeline_schema import build_runs_response, build_sync_response
-from ..services.github_service import GithubService, GithubServiceError
+from ..services.github_service import GithubServiceError
 from ..services.pipeline_service import PipelineService
 
 pipelines_bp = Blueprint("pipelines", __name__, url_prefix="/api/pipelines")
 
 
 def _pipeline_service() -> PipelineService:
-    repo = WorkflowRunRepository(
-        storage_path=current_app.config["RUNS_STORAGE_PATH"],
-        legacy_json_path=current_app.config.get("RUNS_LEGACY_JSON_PATH"),
-    )
-    github = GithubService(
-        api_base=current_app.config["GITHUB_API_BASE"],
-        owner=current_app.config["GITHUB_OWNER"],
-        repo=current_app.config["GITHUB_REPO"],
-        token=current_app.config["GITHUB_TOKEN"],
-    )
-    return PipelineService(repository=repo, github=github)
+    factory = current_app.extensions.get("pipeline_service_factory")
+    if callable(factory):
+        return factory()
+    raise RuntimeError("pipeline_service_factory is not configured")
 
 
 @pipelines_bp.get("/runs")
