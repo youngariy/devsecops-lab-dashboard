@@ -2,23 +2,7 @@ import os
 import threading
 from typing import Any
 
-from ..repositories.workflow_run_repository import WorkflowRunRepository
-from .github_service import GithubService, GithubServiceError
-from .pipeline_service import PipelineService
-
-
-def _build_pipeline_service(app) -> PipelineService:
-    repo = WorkflowRunRepository(
-        storage_path=app.config["RUNS_STORAGE_PATH"],
-        legacy_json_path=app.config.get("RUNS_LEGACY_JSON_PATH"),
-    )
-    github = GithubService(
-        api_base=app.config["GITHUB_API_BASE"],
-        owner=app.config["GITHUB_OWNER"],
-        repo=app.config["GITHUB_REPO"],
-        token=app.config["GITHUB_TOKEN"],
-    )
-    return PipelineService(repository=repo, github=github)
+from .github_service import GithubServiceError
 
 
 def _sync_once(app) -> dict[str, Any] | None:
@@ -29,7 +13,11 @@ def _sync_once(app) -> dict[str, Any] | None:
         return None
 
     per_page = int(app.config.get("POLLING_PER_PAGE", 30))
-    service = _build_pipeline_service(app)
+    factory = app.extensions.get("pipeline_service_factory")
+    if not callable(factory):
+        app.logger.warning("Polling skipped: pipeline_service_factory is not configured")
+        return None
+    service = factory()
     result = service.sync(per_page=per_page)
     return result
 
