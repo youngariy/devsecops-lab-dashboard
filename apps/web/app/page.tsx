@@ -11,14 +11,33 @@ const statusTone: Record<string, string> = {
 type HomeProps = {
   searchParams?: {
     page?: string;
+    category?: string;
+    branch?: string;
   };
 };
 
 export default async function HomePage({ searchParams }: HomeProps) {
   const pageValue = Number(searchParams?.page ?? "1");
+  const selectedCategory = (searchParams?.category ?? "").trim().toLowerCase();
+  const selectedBranch = (searchParams?.branch ?? "").trim();
   const currentPage = Number.isFinite(pageValue) && pageValue > 0 ? Math.floor(pageValue) : 1;
-  const { summary, runs, totalPages, totalRuns } = await getDashboardData(currentPage, 10);
+  const { summary, runs, totalPages, totalRuns, trends } = await getDashboardData(
+    currentPage,
+    10,
+    selectedCategory,
+    selectedBranch
+  );
   const pageNumbers = Array.from({ length: totalPages }, (_, idx) => idx + 1);
+  const securitySummary = summary?.security_summary;
+  const severityOrder = ["critical", "high", "medium", "low", "unknown"];
+  const toolOrder = ["trivy", "bandit", "semgrep", "pip_audit", "gitleaks"];
+  const trendMax = Math.max(1, ...trends.map((point) => point.total_findings));
+  const buildPageHref = (page: number) => {
+    const params = new URLSearchParams({ page: String(page) });
+    if (selectedCategory) params.set("category", selectedCategory);
+    if (selectedBranch) params.set("branch", selectedBranch);
+    return `/?${params.toString()}`;
+  };
 
   return (
     <main className="page">
@@ -27,6 +46,9 @@ export default async function HomePage({ searchParams }: HomeProps) {
         <h1>Pipeline + Security Signal Board</h1>
         <p className="subtitle">
           Track CI, Security, and CD status with recent failures in one view.
+        </p>
+        <p className="hero-link">
+          <Link href="/deployment">Go to Deployment Info</Link>
         </p>
       </section>
 
@@ -57,9 +79,98 @@ export default async function HomePage({ searchParams }: HomeProps) {
 
       <section className="panel reveal delay-2">
         <header className="panel-header">
+          <h3>Security Findings Summary</h3>
+          <span>
+            Secret leak: {securitySummary?.secret_leak_detected ? "detected" : "not detected"}
+          </span>
+        </header>
+        <div className="security-grid">
+          <article className="security-block">
+            <h4>Severity Totals</h4>
+            <div className="severity-list">
+              {severityOrder.map((severity) => (
+                <span key={severity} className={`severity-chip severity-${severity}`}>
+                  {severity}: {securitySummary?.severity_totals?.[severity] ?? 0}
+                </span>
+              ))}
+            </div>
+          </article>
+          <article className="security-block">
+            <h4>Tool Totals</h4>
+            <ul className="tool-list">
+              {toolOrder.map((tool) => (
+                <li key={tool}>
+                  <span>{tool}</span>
+                  <strong>{securitySummary?.tool_totals?.[tool] ?? 0}</strong>
+                </li>
+              ))}
+            </ul>
+          </article>
+          <article className="security-block">
+            <h4>Supply Chain Signals</h4>
+            <ul className="signal-list">
+              <li>
+                <span>SBOM generated</span>
+                <strong>{securitySummary?.supply_chain?.sbom_generated ? "yes" : "no"}</strong>
+              </li>
+              <li>
+                <span>Cosign signed</span>
+                <strong>{securitySummary?.supply_chain?.cosign_signed ? "yes" : "no"}</strong>
+              </li>
+              <li>
+                <span>Cosign verified</span>
+                <strong>{securitySummary?.supply_chain?.cosign_verified ? "yes" : "no"}</strong>
+              </li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section className="panel reveal delay-3">
+        <header className="panel-header">
+          <h3>Security Findings Trend (14d)</h3>
+          <span>{trends.reduce((sum, point) => sum + point.total_findings, 0)} findings</span>
+        </header>
+        {trends.length === 0 && <p className="empty">No trend data collected yet.</p>}
+        {trends.length > 0 && (
+          <div className="trend-chart" style={{ gridTemplateColumns: `repeat(${trends.length}, minmax(0, 1fr))` }}>
+            {trends.map((point) => {
+              const height = Math.max(6, Math.round((point.total_findings / trendMax) * 100));
+              return (
+                <div key={point.date} className="trend-bar-wrap">
+                  <span className="trend-value">{point.total_findings}</span>
+                  <div className="trend-bar" style={{ height: `${height}%` }} />
+                  <span className="trend-label">{point.date.slice(5)}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="panel reveal delay-2">
+        <header className="panel-header">
           <h3>Recent Pipeline Runs</h3>
           <span>{totalRuns} total</span>
         </header>
+        <form className="filters" method="get">
+          <label>
+            Category
+            <select name="category" defaultValue={selectedCategory}>
+              <option value="">all</option>
+              <option value="ci">ci</option>
+              <option value="security">security</option>
+              <option value="cd">cd</option>
+              <option value="other">other</option>
+            </select>
+          </label>
+          <label>
+            Branch
+            <input name="branch" placeholder="main" defaultValue={selectedBranch} />
+          </label>
+          <button type="submit">Apply</button>
+          <Link href="/">Reset</Link>
+        </form>
         <div className="table-wrap">
           <table>
             <thead>
@@ -105,16 +216,16 @@ export default async function HomePage({ searchParams }: HomeProps) {
         </div>
         {totalPages > 1 && (
           <nav className="pagination" aria-label="Pipeline runs pages">
-            <Link href={`/?page=${Math.max(1, currentPage - 1)}`} aria-disabled={currentPage === 1}>
+            <Link href={buildPageHref(Math.max(1, currentPage - 1))} aria-disabled={currentPage === 1}>
               Prev
             </Link>
             {pageNumbers.map((page) => (
-              <Link key={page} href={`/?page=${page}`} aria-current={page === currentPage ? "page" : undefined}>
+              <Link key={page} href={buildPageHref(page)} aria-current={page === currentPage ? "page" : undefined}>
                 {page}
               </Link>
             ))}
             <Link
-              href={`/?page=${Math.min(totalPages, currentPage + 1)}`}
+              href={buildPageHref(Math.min(totalPages, currentPage + 1))}
               aria-disabled={currentPage === totalPages}
             >
               Next

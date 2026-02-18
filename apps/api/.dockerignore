@@ -1,0 +1,13 @@
+tests
+pytest.ini
+.pytest_cache
+*.pytest_cache
+pytest-cache-files-*
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+venv
+.venv
+.git
+.gitignore
