@@ -30,7 +30,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
   const pageNumbers = Array.from({ length: totalPages }, (_, idx) => idx + 1);
   const securitySummary = summary?.security_summary;
   const severityOrder = ["critical", "high", "medium", "low", "unknown"];
-  const toolOrder = ["trivy", "bandit", "semgrep", "pip_audit", "gitleaks"];
+  const toolOrder = ["trivy", "bandit", "semgrep", "pip_audit", "gitleaks", "zap"];
   const trendMax = Math.max(1, ...trends.map((point) => point.total_findings));
   const buildPageHref = (page: number) => {
     const params = new URLSearchParams({ page: String(page) });

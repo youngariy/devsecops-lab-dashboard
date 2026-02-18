@@ -10,6 +10,8 @@ SEVERITY_KEYS = ("critical", "high", "medium", "low", "unknown")
 
 def _normalize_tool_name(name: str) -> str:
     lowered = name.lower()
+    if "zap" in lowered:
+        return "zap"
     if "pip-audit" in lowered or "pip_audit" in lowered or "pipaudit" in lowered:
         return "pip_audit"
     if "semgrep" in lowered:
@@ -25,6 +27,14 @@ def _normalize_tool_name(name: str) -> str:
 
 def _normalize_severity(value: str) -> str:
     lowered = (value or "").strip().lower()
+    if lowered.startswith("critical"):
+        return "critical"
+    if lowered.startswith("high"):
+        return "high"
+    if lowered.startswith("medium"):
+        return "medium"
+    if lowered.startswith("low"):
+        return "low"
     if lowered in {"critical", "high", "medium", "low"}:
         return lowered
     if lowered in {"error"}:
@@ -102,10 +112,10 @@ def _extract_supply_chain_signals(payload: Any) -> dict[str, Any]:
 def _collect_json_findings(payload: Any) -> list[str]:
     findings: list[str] = []
     if isinstance(payload, dict):
-        for key in ("severity", "level", "issue_severity", "Severity"):
+        for key in ("severity", "level", "issue_severity", "Severity", "riskdesc", "risk"):
             if key in payload and isinstance(payload[key], str):
                 findings.append(payload[key])
-        for key in ("results", "vulnerabilities", "findings"):
+        for key in ("results", "vulnerabilities", "findings", "alerts", "site"):
             value = payload.get(key)
             if isinstance(value, list):
                 for item in value:
