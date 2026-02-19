@@ -11,3 +11,12 @@ apps/api/tests/.testdata/
 node_modules/
 .next/
 out/
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+**/*.tfstate
+**/*.tfstate.*
+**/terraform.tfvars
+
+# (원하면) tfvars example만 남기고 실제 tfvars는 제외하는게 보안상 권장
+# **/terraform.tfvars.example 는 남겨둠
