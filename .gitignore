@@ -11,3 +11,8 @@ apps/api/tests/.testdata/
 node_modules/
 .next/
 out/
+# Terraform 
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/terraform.tfvars

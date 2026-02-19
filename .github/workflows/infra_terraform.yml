@@ -1,0 +1,127 @@
+name: Infra - Terraform for GCE k3s
+
+on:
+  pull_request:
+    paths:
+      - "infra/terraform/gce_k3s/**"
+      - ".github/workflows/infra_terraform.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action"
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_WORKING_DIR: infra/terraform/gce_k3s
+  TF_IN_AUTOMATION: true
+
+  TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID }}
+  TF_VAR_region: ${{ vars.GCE_REGION || secrets.GCE_REGION || 'us-central1' }}
+  TF_VAR_zone: ${{ vars.GCE_ZONE || secrets.GCE_ZONE || 'us-central1-a' }}
+  TF_VAR_ssh_user: ${{ secrets.GCP_USER }}
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive SSH public key from GCP_SSH_KEY
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.GCP_SSH_KEY }}" ]; then
+            echo "ERROR: Secret 'GCP_SSH_KEY' is empty." >&2
+            exit 1
+          fi
+
+          keyfile="$(mktemp)"
+          printf '%s\n' "${{ secrets.GCP_SSH_KEY }}" > "$keyfile"
+          chmod 600 "$keyfile"
+          pubkey="$(ssh-keygen -y -f "$keyfile")"
+          rm -f "$keyfile"
+
+          if [ -z "${pubkey:-}" ]; then
+            echo "ERROR: Failed to derive SSH public key from GCP_SSH_KEY." >&2
+            exit 1
+          fi
+
+          echo "TF_VAR_ssh_public_key=$pubkey" >> "$GITHUB_ENV"
+
+      - name: Validate required variables/secrets
+        run: |
+          set -euo pipefail
+
+          required_vars=(TF_VAR_project_id TF_VAR_region TF_VAR_zone TF_VAR_ssh_user)
+          for v in "${required_vars[@]}"; do
+            if [ -z "${!v:-}" ]; then
+              echo "ERROR: GitHub Secret/Variable for '$v' is empty." >&2
+              exit 1
+            fi
+          done
+
+          if [ -z "${TF_VAR_ssh_public_key:-}" ]; then
+            echo "ERROR: TF_VAR_ssh_public_key is empty after key derivation." >&2
+            exit 1
+          fi
+
+          if [ -z "${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}" ]; then
+            echo "ERROR: Secret 'GCP_WORKLOAD_IDENTITY_PROVIDER' is empty." >&2
+            exit 1
+          fi
+
+          if [ -z "${{ secrets.GCP_SERVICE_ACCOUNT }}" ]; then
+            echo "ERROR: Secret 'GCP_SERVICE_ACCOUNT' is empty." >&2
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
+        run: terraform plan -out=tfplan
+
+      - name: Upload Terraform plan
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-gce-k3s
+          path: ${{ env.TF_WORKING_DIR }}/tfplan
+
+      - name: Terraform apply
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
+        run: terraform apply -auto-approve
+
+      - name: Terraform destroy
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+        run: terraform destroy -auto-approve
