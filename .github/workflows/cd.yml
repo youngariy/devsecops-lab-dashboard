@@ -105,7 +105,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Trivy image scan (HIGH/CRIT fail)
+      - name: Trivy image scan (SARIF)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: ${{ env.IMG }}
@@ -114,7 +114,7 @@ jobs:
           ignore-unfixed: true
           format: sarif
           output: trivy-image.sarif
-          exit-code: '1'
+          exit-code: '0'
           scanners: 'vuln'
 
       - name: Upload Trivy SARIF
@@ -132,12 +132,35 @@ jobs:
       - name: Trivy JSON (for SeveritySource)
         if: always()
         run: |
+          set -euo pipefail
           trivy image --scanners vuln \
           --vuln-type os,library \
           --severity HIGH,CRITICAL \
           --ignore-unfixed \
-          --detection-priority precise \
-          -f json -o trivy-image.json "${IMG}" || true
+          -f json -o trivy-image.json "${IMG}"
+
+      - name: Enforce Trivy gate from JSON (HIGH/CRIT)
+        if: always()
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import sys
+
+          with open("trivy-image.json", "r", encoding="utf-8") as f:
+              payload = json.load(f)
+
+          count = 0
+          for result in payload.get("Results", []) or []:
+              vulns = result.get("Vulnerabilities", []) or []
+              for vuln in vulns:
+                  if str(vuln.get("Severity", "")).upper() in {"HIGH", "CRITICAL"}:
+                      count += 1
+
+          print(f"high_critical_count={count}")
+          if count > 0:
+              sys.exit(1)
+          PY
 
 
       - name: Upload Trivy JSON
