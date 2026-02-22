@@ -265,6 +265,7 @@ jobs:
         run: |
           ssh ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} <<'EOF'
             mkdir -p "${{ env.REMOTE_DIR }}"/{nginx,api-data,certbot/{config,www,logs}}
+            chmod 0777 "${{ env.REMOTE_DIR }}/api-data"
 
             cat > "${{ env.REMOTE_DIR }}/.env" <<EOT
             DOMAIN=${{ env.DOMAIN }}
