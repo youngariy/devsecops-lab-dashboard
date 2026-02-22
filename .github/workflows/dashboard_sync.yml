@@ -18,16 +18,26 @@ jobs:
           SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
           set -euo pipefail
-          SYNC_URL="https://${DOMAIN}/api/pipelines/sync?per_page=50"
+          SYNC_URL="https://${DOMAIN}/api/pipelines/sync?per_page=30"
           ok=0
           for i in {1..8}; do
-            if curl -sSf -m 15 -X POST \
+            code="$(curl -sS -m 20 -X POST \
               -H "X-Sync-Token: ${SYNC_TOKEN}" \
-              "${SYNC_URL}" >/tmp/sync-response.json; then
+              -o /tmp/sync-response.json \
+              -w "%{http_code}" \
+              "${SYNC_URL}" || true)"
+
+            if [[ "${code}" =~ ^2 ]]; then
               echo "Sync OK: ${SYNC_URL}"
               cat /tmp/sync-response.json
               ok=1
               break
+            fi
+
+            echo "Sync failed (attempt ${i}/8), http=${code}"
+            if [ -s /tmp/sync-response.json ]; then
+              echo "Response body:"
+              cat /tmp/sync-response.json
             fi
             echo "...retry sync (${i}/8): ${SYNC_URL}"
             sleep 10
