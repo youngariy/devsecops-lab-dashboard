@@ -208,6 +208,35 @@ def test_sync_requires_token(client):
     assert resp.status_code == 401
 
 
+def test_sync_per_page_is_clamped(client, monkeypatch):
+    from app.services.github_service import GithubService
+
+    captured = []
+
+    def _fake_list_runs(self, per_page=30):
+        captured.append(per_page)
+        return []
+
+    monkeypatch.setattr(GithubService, "list_workflow_runs", _fake_list_runs)
+    monkeypatch.setattr(GithubService, "build_run_summary", lambda self, run_id: {})
+
+    high_resp = client.post(
+        "/api/pipelines/sync?per_page=9999",
+        headers={"X-Sync-Token": "test-sync-token"},
+    )
+    assert high_resp.status_code == 200
+    assert high_resp.get_json()["synced_runs"] == 0
+
+    low_resp = client.post(
+        "/api/pipelines/sync?per_page=-5",
+        headers={"X-Sync-Token": "test-sync-token"},
+    )
+    assert low_resp.status_code == 200
+    assert low_resp.get_json()["synced_runs"] == 0
+
+    assert captured == [100, 1]
+
+
 def test_legacy_json_is_migrated_once():
     from app.repositories.workflow_run_repository import WorkflowRunRepository
 

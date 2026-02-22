@@ -7,6 +7,9 @@ RUN npm install --no-audit --no-fund
 
 COPY . .
 RUN npm run build
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
+    && chown -R appuser:appgroup /app
+USER appuser
 
 EXPOSE 3000
 

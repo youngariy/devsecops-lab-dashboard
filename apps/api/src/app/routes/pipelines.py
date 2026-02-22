@@ -1,3 +1,5 @@
+from hmac import compare_digest
+
 from flask import Blueprint, current_app, jsonify, request
 
 from ..schemas.pipeline_schema import build_runs_response, build_sync_response
@@ -64,7 +66,7 @@ def sync_runs():
         return jsonify({"error": "SYNC_TOKEN must be configured on server"}), 503
 
     provided_token = request.headers.get("X-Sync-Token", "")
-    if provided_token != sync_token:
+    if not compare_digest(str(provided_token), str(sync_token)):
         return jsonify({"error": "Unauthorized sync request"}), 401
 
     owner = current_app.config["GITHUB_OWNER"]
@@ -80,6 +82,7 @@ def sync_runs():
         )
 
     per_page = request.args.get("per_page", default=30, type=int)
+    per_page = max(1, min(per_page, 100))
     try:
         result = _pipeline_service().sync(per_page=per_page)
     except GithubServiceError as exc:
