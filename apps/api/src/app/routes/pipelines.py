@@ -87,4 +87,7 @@ def sync_runs():
         result = _pipeline_service().sync(per_page=per_page)
     except GithubServiceError as exc:
         return jsonify({"error": str(exc)}), 502
+    except Exception:
+        current_app.logger.exception("Unexpected error while syncing pipeline runs")
+        return jsonify({"error": "Internal sync error"}), 500
     return jsonify(build_sync_response(result["synced"]))
