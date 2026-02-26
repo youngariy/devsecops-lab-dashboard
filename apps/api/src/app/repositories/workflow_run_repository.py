@@ -13,8 +13,9 @@ class WorkflowRunRepository:
         self._migrate_legacy_json_once()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.storage_path)
+        conn = sqlite3.connect(self.storage_path, timeout=30)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 30000")
         return conn
 
     def _init_db(self) -> None:
