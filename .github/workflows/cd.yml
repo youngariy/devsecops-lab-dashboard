@@ -96,7 +96,7 @@ jobs:
           ignore-unfixed: true
           format: sarif
           output: trivy-image.sarif
-          exit-code: "1"
+          exit-code: "0"
           scanners: "vuln"
 
       - name: Upload Trivy SARIF
@@ -104,6 +104,16 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-image.sarif
+
+      - name: Enforce Trivy gate (HIGH/CRITICAL)
+        run: |
+          set -euo pipefail
+          trivy image --scanners vuln \
+            --vuln-type os,library \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
+            "$IMG"
 
       - name: Trivy JSON (for SeveritySource)
         if: always()
