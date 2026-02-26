@@ -18,7 +18,7 @@ jobs:
           SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
           set -euo pipefail
-          SYNC_URL="https://${DOMAIN}/api/pipelines/sync?per_page=30"
+          SYNC_URL="https://${DOMAIN}/api/pipelines/sync?per_page=20&debug=1"
           ok=0
           for i in {1..8}; do
             code="$(curl -sS -m 20 -X POST \
